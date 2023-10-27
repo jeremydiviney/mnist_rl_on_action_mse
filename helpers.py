@@ -16,7 +16,7 @@ def log_grad_histogram(engine, model, epoch, writer):
             name + '-grad', param.grad.clone().cpu().data.numpy(), epoch)
 
 
-def train_experiment(experiment_name, model, train_loader, val_loader, num_epochs, optimizer_class, optimizer_params, scheduler_class, scheduler_params, criterion,  device, SummaryWriter):
+def train_experiment(experiment_name, model, train_loader, val_loader, num_epochs, optimizer_class, optimizer_params, scheduler_class, scheduler_params, loss_fn,  device, SummaryWriter):
     # Serialize optimizer parameters
     serialized_opt_params = " ".join(
         [f"{k} {str(v).replace('.', '_')}" for k, v in optimizer_params.items()])
@@ -24,9 +24,7 @@ def train_experiment(experiment_name, model, train_loader, val_loader, num_epoch
         log_dir=f'logs/{experiment_name}_({serialized_opt_params})')
 
     optimizer = optimizer_class(model.parameters(), **optimizer_params)
-    scheduler = scheduler_class(optimizer, **scheduler_params)
-
-    print(list(dict(model.named_parameters()).keys()))
+    scheduler = scheduler_class(optimizer, **scheduler_params) if scheduler_class else None
 
     for epoch in range(num_epochs):
 
@@ -39,13 +37,13 @@ def train_experiment(experiment_name, model, train_loader, val_loader, num_epoch
             inputs, targets = inputs.to(device), targets.to(device)
             optimizer.zero_grad()
             outputs = model(inputs)
-            loss = criterion(outputs, targets)
+            loss = loss_fn(outputs, targets)
             loss.backward()
             optimizer.step()
             total_loss += loss.item() * inputs.size(0)
 
             _, pred = outputs.max(1)
-            _, correct_pred = targets.max(1)
+            correct_pred = targets
             correct_train += pred.eq(correct_pred).sum().item()
 
         avg_train_loss = total_loss / len(train_loader.dataset)
@@ -65,11 +63,11 @@ def train_experiment(experiment_name, model, train_loader, val_loader, num_epoch
             for inputs, targets in val_loader:
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = model(inputs)
-                loss = criterion(outputs, targets)
+                loss = loss_fn(outputs, targets)
                 total_loss += loss.item() * inputs.size(0)
 
                 _, pred = outputs.max(1)
-                _, correct_pred = targets.max(1)
+                correct_pred = targets
                 correct_val += pred.eq(correct_pred).sum().item()
 
         avg_val_loss = total_loss / len(val_loader.dataset)
@@ -80,7 +78,8 @@ def train_experiment(experiment_name, model, train_loader, val_loader, num_epoch
         print(
             f"V - Epoch: {epoch}, Loss: {avg_val_loss:.7f}, Accuracy: {val_accuracy:.4f}")
 
-        scheduler.step()
+        if scheduler:
+            scheduler.step()
 
     print(list(dict(model.named_parameters()).keys()))
 

@@ -44,8 +44,8 @@ scheduler = StepLR(optimizer, step_size=5, gamma=0.66)
 
 # Load MNIST data
 transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])
-train_loader = torch.utils.data.DataLoader(datasets.MNIST(
-    './data', train=True, download=True, transform=transform), batch_size=256, shuffle=True)
+train_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=True, download=True, transform=transform), batch_size=256, shuffle=True)
+val_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=False, download=True, transform=transform), batch_size=256, shuffle=False)
 
 # Training loop
 for epoch in range(1, 40):  # 10 epochs
