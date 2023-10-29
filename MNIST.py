@@ -47,8 +47,9 @@ class DenseLinearModel(nn.Module):
 # TODO: try amping the penalty for bad predictions even more
 
 class PolicyLoss(nn.Module):
-    def __init__(self, calc_type):
+    def __init__(self, calc_type, max_prob):
         self.calc_type = calc_type
+        self.max_prob = max_prob
         super(PolicyLoss, self).__init__()
 
     def forward(self, predictions, labels):
@@ -63,29 +64,14 @@ class PolicyLoss(nn.Module):
         # _, action = final_predictions.max(dim=1)
         # action = torch.multinomial(final_predictions, 1).squeeze()
         # choose uniform randomly
-        action = torch.randint(0, 10, (final_predictions.shape[0],)).to(device)
+        # action = torch.randint(0, 10, (final_predictions.shape[0],)).to(device)
 
         if self.calc_type == 0:
             # Calculate the reward
+            action = torch.multinomial(final_predictions, 1).squeeze()
             reward = torch.where(action == labels, 1, -1)
             chosen_action_probs = final_predictions[range(final_predictions.size(0)), action]
-            good_loss = (1 - chosen_action_probs[reward == 1])**2
-            bad_loss = (chosen_action_probs[reward == -1])**2 * 5
-            loss = torch.concatenate((good_loss, bad_loss))
-
-        if self.calc_type == 1:
-            # Calculate the reward
-            reward = torch.where(action == labels, 1, -1)
-            chosen_action_probs = final_predictions[range(final_predictions.size(0)), action]
-            good_loss = (1 - chosen_action_probs[reward == 1])**2
-            bad_loss = (chosen_action_probs[reward == -1])**2 * 2
-            loss = torch.concatenate((good_loss, bad_loss))
-
-        elif self.calc_type == 2:
-            # Calculate the reward
-            reward = torch.where(action == labels, 1, -1)
-            chosen_action_probs = final_predictions[range(final_predictions.size(0)), action]
-            good_loss = (1 - chosen_action_probs[reward == 1])**2
+            good_loss = (self.max_prob - chosen_action_probs[reward == 1])**2
             bad_loss = (chosen_action_probs[reward == -1])**2
             loss = torch.concatenate((good_loss, bad_loss))
 
@@ -121,73 +107,75 @@ def get_model_resnet():
 num_classes = 10
 
 
-transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-train_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=True, download=True, transform=transform), batch_size=256, shuffle=True)
-val_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=False, download=True, transform=transform), batch_size=2048, shuffle=False)
+# transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+transform = transforms.Compose([transforms.ToTensor()])
+train_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=True, download=True, transform=transform), batch_size=128, shuffle=True)
+val_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=False, download=True, transform=transform), batch_size=1024, shuffle=False)
 
 
 # Define your experiments
 experiments = [
     # {
-    #     'name': 'MNIST Baseline (Adam,  StepLR)',
+    #     'name': 'MNIST Baseline (Adam, StepLR)',
     #     'model_fn': get_model_resnet,
     #     'model_params': {},
     #     'train_loader': train_loader,
     #     'val_loader': val_loader,
     #     'num_epochs': 20,
     #     'scheduler_class': StepLR,
-    #     'scheduler_params': {'step_size': 2, 'gamma': 0.8},
+    #     'scheduler_params': {'step_size': 2, 'gamma': 0.5},
     #     'optimizer_class': optim.Adam,
-    #     'optimizer_params': {'lr': .001},
+    #     'optimizer_params': {'lr': .002},
     #     'loss_fn': nn.CrossEntropyLoss(),
     #     'num_runs': 1,
     #     'train_fn': train_experiment
     # },
     {
-        'name': 'MNIST RL Policy (Adam,  StepLR) RESNET18 calc_type=0',
+        'name': 'MNIST RL Policy (Adam, StepLR) RESNET18 calc_type=0',
         'model_fn': get_model_resnet,
         'model_params': {},
         'train_loader': train_loader,
         'val_loader': val_loader,
         'num_epochs': 20,
         'scheduler_class': StepLR,
-        'scheduler_params': {'step_size': 2, 'gamma': 0.8},
+        'scheduler_params': {'step_size': 5, 'gamma': 0.5},
         'optimizer_class': optim.Adam,
         'optimizer_params': {'lr': .001},
-        'loss_fn': PolicyLoss(calc_type=0),
+        'loss_fn': PolicyLoss(calc_type=0, max_prob=1),
         'num_runs': 1,
         'train_fn': train_experiment
     },
     {
-        'name': 'MNIST RL Policy (Adam,  StepLR) RESNET18 calc_type=1',
+        'name': 'MNIST RL Policy (Adam, StepLR) RESNET18 calc_type=0',
         'model_fn': get_model_resnet,
         'model_params': {},
         'train_loader': train_loader,
         'val_loader': val_loader,
         'num_epochs': 20,
         'scheduler_class': StepLR,
-        'scheduler_params': {'step_size': 2, 'gamma': 0.8},
+        'scheduler_params': {'step_size': 2, 'gamma': 0.75},
         'optimizer_class': optim.Adam,
-        'optimizer_params': {'lr': .001},
-        'loss_fn': PolicyLoss(calc_type=1),
+        'optimizer_params': {'lr': .0025},
+        'loss_fn': PolicyLoss(calc_type=0, max_prob=1),
         'num_runs': 1,
         'train_fn': train_experiment
     },
     {
-        'name': 'MNIST RL Policy (Adam,  StepLR) RESNET18 calc_type=2',
+        'name': 'MNIST RL Policy (Adam, StepLR) RESNET18 calc_type=0',
         'model_fn': get_model_resnet,
         'model_params': {},
         'train_loader': train_loader,
         'val_loader': val_loader,
         'num_epochs': 20,
         'scheduler_class': StepLR,
-        'scheduler_params': {'step_size': 2, 'gamma': 0.8},
+        'scheduler_params': {'step_size': 1, 'gamma': 0.75},
         'optimizer_class': optim.Adam,
-        'optimizer_params': {'lr': .001},
-        'loss_fn': PolicyLoss(calc_type=2),
+        'optimizer_params': {'lr': .005},
+        'loss_fn': PolicyLoss(calc_type=0, max_prob=1),
         'num_runs': 1,
         'train_fn': train_experiment
     },
+
 ]
 
 
