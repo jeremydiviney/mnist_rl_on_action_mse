@@ -1,3 +1,4 @@
+import random
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -61,14 +62,23 @@ class PolicyLoss(nn.Module):
 
         final_predictions = torch.softmax(predictions, dim=1)
 
-        # _, action = final_predictions.max(dim=1)
+        _, action = final_predictions.max(dim=1)
         # action = torch.multinomial(final_predictions, 1).squeeze()
         # choose uniform randomly
         # action = torch.randint(0, 10, (final_predictions.shape[0],)).to(device)
 
         if self.calc_type == 0:
             # Calculate the reward
-            action = torch.multinomial(final_predictions, 1).squeeze()
+            # action = torch.multinomial(final_predictions, 1).squeeze()
+            reward = torch.where(action == labels, 1, -1)
+            chosen_action_probs = final_predictions[range(final_predictions.size(0)), action]
+            good_loss = -torch.log(chosen_action_probs[reward == 1])
+            bad_loss = -torch.log(1 - chosen_action_probs[reward == -1])
+            loss = torch.concatenate((good_loss, bad_loss))
+
+        if self.calc_type == 1:
+           # Calculate the reward
+            # action = torch.multinomial(final_predictions, 1).squeeze()
             reward = torch.where(action == labels, 1, -1)
             chosen_action_probs = final_predictions[range(final_predictions.size(0)), action]
             good_loss = (self.max_prob - chosen_action_probs[reward == 1])**2
@@ -107,10 +117,19 @@ def get_model_resnet():
 num_classes = 10
 
 
-# transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
-transform = transforms.Compose([transforms.ToTensor()])
-train_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=True, download=True, transform=transform), batch_size=128, shuffle=True)
-val_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=False, download=True, transform=transform), batch_size=1024, shuffle=False)
+train_transform = transforms.Compose([transforms.ToTensor(),
+                                     transforms.Normalize((0.1307,), (0.3081,)),
+                                     transforms.RandomRotation(degrees=(-12.5, 12.5))]
+                                     )
+
+val_transform = transforms.Compose([transforms.ToTensor(),
+                                   transforms.Normalize((0.1307,), (0.3081,))]
+                                   )
+
+train_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=True, download=True,
+                                           transform=train_transform), batch_size=128, shuffle=True, num_workers=6)
+val_loader = torch.utils.data.DataLoader(datasets.MNIST('./data', train=False, download=True,
+                                         transform=val_transform), batch_size=1024, shuffle=False, num_workers=6)
 
 
 # Define your experiments
@@ -123,7 +142,7 @@ experiments = [
     #     'val_loader': val_loader,
     #     'num_epochs': 20,
     #     'scheduler_class': StepLR,
-    #     'scheduler_params': {'step_size': 2, 'gamma': 0.5},
+    #     'scheduler_params': {'step_size': 2, 'gamma': 0.75},
     #     'optimizer_class': optim.Adam,
     #     'optimizer_params': {'lr': .002},
     #     'loss_fn': nn.CrossEntropyLoss(),
@@ -138,15 +157,15 @@ experiments = [
         'val_loader': val_loader,
         'num_epochs': 20,
         'scheduler_class': StepLR,
-        'scheduler_params': {'step_size': 5, 'gamma': 0.5},
+        'scheduler_params': {'step_size': 2, 'gamma': 0.75},
         'optimizer_class': optim.Adam,
-        'optimizer_params': {'lr': .001},
+        'optimizer_params': {'lr': .002},
         'loss_fn': PolicyLoss(calc_type=0, max_prob=1),
         'num_runs': 1,
         'train_fn': train_experiment
     },
     {
-        'name': 'MNIST RL Policy (Adam, StepLR) RESNET18 calc_type=0',
+        'name': 'MNIST RL Policy (Adam, StepLR) RESNET18 calc_type=1',
         'model_fn': get_model_resnet,
         'model_params': {},
         'train_loader': train_loader,
@@ -155,26 +174,14 @@ experiments = [
         'scheduler_class': StepLR,
         'scheduler_params': {'step_size': 2, 'gamma': 0.75},
         'optimizer_class': optim.Adam,
-        'optimizer_params': {'lr': .0025},
-        'loss_fn': PolicyLoss(calc_type=0, max_prob=1),
+        'optimizer_params': {'lr': .002},
+        'loss_fn': PolicyLoss(calc_type=1, max_prob=1),
         'num_runs': 1,
         'train_fn': train_experiment
     },
-    {
-        'name': 'MNIST RL Policy (Adam, StepLR) RESNET18 calc_type=0',
-        'model_fn': get_model_resnet,
-        'model_params': {},
-        'train_loader': train_loader,
-        'val_loader': val_loader,
-        'num_epochs': 20,
-        'scheduler_class': StepLR,
-        'scheduler_params': {'step_size': 1, 'gamma': 0.75},
-        'optimizer_class': optim.Adam,
-        'optimizer_params': {'lr': .005},
-        'loss_fn': PolicyLoss(calc_type=0, max_prob=1),
-        'num_runs': 1,
-        'train_fn': train_experiment
-    },
+
+
+
 
 ]
 
