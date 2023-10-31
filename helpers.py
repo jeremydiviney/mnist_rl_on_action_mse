@@ -52,7 +52,7 @@ def train_experiment(experiment_name, model, train_loader, val_loader, num_epoch
         writer.add_scalar('train/loss', avg_train_loss, epoch)
         writer.add_scalar('train/accuracy', train_accuracy, epoch)
         print(
-            f"T - Epoch: {epoch}, Loss: {avg_train_loss:.7f}, Accuracy: {train_accuracy:.4f}")
+            f"T - Epoch: {epoch}, Loss: {avg_train_loss:.7f}, Accuracy: {train_accuracy:.4f}, LR: {optimizer.param_groups[0]['lr']}")
 
         # Validation
         model.eval()
@@ -79,7 +79,7 @@ def train_experiment(experiment_name, model, train_loader, val_loader, num_epoch
             f"V - Epoch: {epoch}, Loss: {avg_val_loss:.7f}, Accuracy: {val_accuracy:.4f}")
 
         if scheduler:
-            scheduler.step()
+            scheduler.step(avg_val_loss)
 
     print(list(dict(model.named_parameters()).keys()))
 

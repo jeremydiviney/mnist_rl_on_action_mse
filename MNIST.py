@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from torchvision import datasets, transforms, models
 
 
@@ -63,40 +63,35 @@ class PolicyLoss(nn.Module):
         final_predictions = torch.softmax(predictions, dim=1)
 
         _, action = final_predictions.max(dim=1)
-        # action = torch.multinomial(final_predictions, 1).squeeze()
-        # choose uniform randomly
-        # action = torch.randint(0, 10, (final_predictions.shape[0],)).to(device)
+        action = torch.multinomial(final_predictions, 1).squeeze()
+
+        reward = torch.where(action == labels, 1, -1)
+        chosen_action_probs = final_predictions[range(final_predictions.size(0)), action]
 
         if self.calc_type == 0:
-            # Calculate the reward
-            # action = torch.multinomial(final_predictions, 1).squeeze()
-            reward = torch.where(action == labels, 1, -1)
-            chosen_action_probs = final_predictions[range(final_predictions.size(0)), action]
             good_loss = -torch.log(chosen_action_probs[reward == 1])
             bad_loss = -torch.log(1 - chosen_action_probs[reward == -1])
             loss = torch.concatenate((good_loss, bad_loss))
 
-        if self.calc_type == 1:
-           # Calculate the reward
-            # action = torch.multinomial(final_predictions, 1).squeeze()
-            reward = torch.where(action == labels, 1, -1)
-            chosen_action_probs = final_predictions[range(final_predictions.size(0)), action]
+        elif self.calc_type == 1:
             good_loss = (self.max_prob - chosen_action_probs[reward == 1])**2
             bad_loss = (chosen_action_probs[reward == -1])**2
             loss = torch.concatenate((good_loss, bad_loss))
 
-        # action = torch.multinomial(final_predictions, 1).squeeze()
-        # Calculate the reward
-        # reward = torch.where(action == labels, 1, -1)
-        # good_ratio = (labels == action).float().mean()
-        # reward = (action == labels).float()   # 1 for correct, 0 for incorrect
+        elif self.calc_type == 2:
+            good_loss = (1 - chosen_action_probs[reward == 1]) * 1
+            bad_loss = chosen_action_probs[reward == -1] * 1
+            loss = torch.concatenate((good_loss, bad_loss))
 
-        # loss = (chosen_action_probs - reward)**2
+        elif self.calc_type == 3:
+            good_loss = (1 - chosen_action_probs[reward == 1]) * 0
+            bad_loss = chosen_action_probs[reward == -1] * 1
+            loss = torch.concatenate((good_loss, bad_loss))
 
-        # loss = F.mse_loss(chosen_action_probs, (reward+1)/2, reduction='none')
-        # loss = chosen_action_probs * -reward
-        # loss = torch.log(chosen_action_probs) * -reward
-        # loss = torch.pow(1 + chosen_action_probs, -reward)
+        elif self.calc_type == 4:
+            good_loss = (1 - chosen_action_probs[reward == 1]) * 1
+            bad_loss = chosen_action_probs[reward == -1] * 0
+            loss = torch.concatenate((good_loss, bad_loss))
 
         return loss.mean()
 
@@ -114,12 +109,9 @@ def get_model_resnet():
     return resnet18
 
 
-num_classes = 10
-
-
 train_transform = transforms.Compose([transforms.ToTensor(),
                                      transforms.Normalize((0.1307,), (0.3081,)),
-                                     transforms.RandomRotation(degrees=(-12.5, 12.5))]
+                                     transforms.RandomRotation(degrees=(-8.5, 8.5))]
                                      )
 
 val_transform = transforms.Compose([transforms.ToTensor(),
@@ -149,6 +141,7 @@ experiments = [
     #     'num_runs': 1,
     #     'train_fn': train_experiment
     # },
+
     {
         'name': 'MNIST RL Policy (Adam, StepLR) RESNET18 calc_type=0',
         'model_fn': get_model_resnet,
@@ -156,10 +149,11 @@ experiments = [
         'train_loader': train_loader,
         'val_loader': val_loader,
         'num_epochs': 20,
-        'scheduler_class': StepLR,
-        'scheduler_params': {'step_size': 2, 'gamma': 0.75},
+        'scheduler_class': ReduceLROnPlateau,
+        # 'scheduler_params': {'step_size': 3, 'gamma': .5},
+        'scheduler_params': {'mode': 'min', 'factor': 0.5, 'patience': 1},
         'optimizer_class': optim.Adam,
-        'optimizer_params': {'lr': .002},
+        'optimizer_params': {'lr': .0005},
         'loss_fn': PolicyLoss(calc_type=0, max_prob=1),
         'num_runs': 1,
         'train_fn': train_experiment
@@ -171,14 +165,82 @@ experiments = [
         'train_loader': train_loader,
         'val_loader': val_loader,
         'num_epochs': 20,
-        'scheduler_class': StepLR,
-        'scheduler_params': {'step_size': 2, 'gamma': 0.75},
+        'scheduler_class': ReduceLROnPlateau,
+        # 'scheduler_params': {'step_size': 3, 'gamma': .5},
+        'scheduler_params': {'mode': 'min', 'factor': 0.5, 'patience': 1},
         'optimizer_class': optim.Adam,
-        'optimizer_params': {'lr': .002},
+        'optimizer_params': {'lr': .0005},
         'loss_fn': PolicyLoss(calc_type=1, max_prob=1),
         'num_runs': 1,
         'train_fn': train_experiment
     },
+    {
+        'name': 'MNIST RL Policy (Adam, StepLR) RESNET18 calc_type=2',
+        'model_fn': get_model_resnet,
+        'model_params': {},
+        'train_loader': train_loader,
+        'val_loader': val_loader,
+        'num_epochs': 20,
+        'scheduler_class': ReduceLROnPlateau,
+        # 'scheduler_params': {'step_size': 3, 'gamma': .5},
+        'scheduler_params': {'mode': 'min', 'factor': 0.5, 'patience': 1},
+        'optimizer_class': optim.Adam,
+        'optimizer_params': {'lr': .0005},
+        'loss_fn': PolicyLoss(calc_type=2, max_prob=1),
+        'num_runs': 1,
+        'train_fn': train_experiment
+    },
+    {
+        'name': 'MNIST RL Policy (Adam, StepLR) RESNET18 calc_type=2',
+        'model_fn': get_model_resnet,
+        'model_params': {},
+        'train_loader': train_loader,
+        'val_loader': val_loader,
+        'num_epochs': 20,
+        'scheduler_class': ReduceLROnPlateau,
+        # 'scheduler_params': {'step_size': 3, 'gamma': .5},
+        'scheduler_params': {'mode': 'min', 'factor': 0.5, 'patience': 1},
+        'optimizer_class': optim.Adam,
+        'optimizer_params': {'lr': .0005},
+        'loss_fn': PolicyLoss(calc_type=3, max_prob=1),
+        'num_runs': 1,
+        'train_fn': train_experiment
+    },
+    {
+        'name': 'MNIST RL Policy (Adam, StepLR) RESNET18 calc_type=2',
+        'model_fn': get_model_resnet,
+        'model_params': {},
+        'train_loader': train_loader,
+        'val_loader': val_loader,
+        'num_epochs': 20,
+        'scheduler_class': ReduceLROnPlateau,
+        # 'scheduler_params': {'step_size': 3, 'gamma': .5},
+        'scheduler_params': {'mode': 'min', 'factor': 0.5, 'patience': 1},
+        'optimizer_class': optim.Adam,
+        'optimizer_params': {'lr': .0005},
+        'loss_fn': PolicyLoss(calc_type=4, max_prob=1),
+        'num_runs': 1,
+        'train_fn': train_experiment
+    },
+
+
+
+
+    # {
+    #     'name': 'MNIST RL Policy (Adam, StepLR) RESNET18 calc_type=1',
+    #     'model_fn': get_model_resnet,
+    #     'model_params': {},
+    #     'train_loader': train_loader,
+    #     'val_loader': val_loader,
+    #     'num_epochs': 20,
+    #     'scheduler_class': StepLR,
+    #     'scheduler_params': {'step_size': 2, 'gamma': 0.75},
+    #     'optimizer_class': optim.Adam,
+    #     'optimizer_params': {'lr': .002},
+    #     'loss_fn': PolicyLoss(calc_type=1, max_prob=1),
+    #     'num_runs': 1,
+    #     'train_fn': train_experiment
+    # },
 
 
 
