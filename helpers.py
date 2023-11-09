@@ -79,7 +79,7 @@ def train_experiment(experiment_name, model, train_loader, val_loader, num_epoch
             f"V - Epoch: {epoch}, Loss: {avg_val_loss:.7f}, Accuracy: {val_accuracy:.4f}")
 
         if scheduler:
-            scheduler.step(avg_val_loss)
+            scheduler.step()
 
     print(list(dict(model.named_parameters()).keys()))
 
